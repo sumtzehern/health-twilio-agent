@@ -22,8 +22,7 @@ app.add_middleware(
 @app.post("/")
 async def start_call():
     print("Start call")
-    with open("templates/streams.xml") as f:
-        return HTMLResponse(content=f.read(), media_type="application/xml")
+    return HTMLResponse(content=open("templates/streams.xml").read(), media_type="application/xml")
 
 
 @app.websocket("/audio-stream")

@@ -42,6 +42,8 @@ from pipecat.transports.network.websocket_client import (
     WebsocketClientTransport,
 )
 
+from patient_info_tracker import PatientInfoTracker
+
 load_dotenv(override=True)
 
 logger.remove(0)
@@ -146,7 +148,7 @@ async def run_client(client_name: str, server_url: str, duration_secs: int):
         ),
     )
 
-    llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
+    llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o", functions=[PatientInfoTracker])
 
     # let the audio passthrough so we can record the conversation.
     stt = DeepgramSTTService(
@@ -273,6 +275,9 @@ Always follow this specific order for data collection to ensure consistency with
 ## 8. Collect contact information
 - Prompt: "What's your best phone number in case we need to follow up?"
 - Repeat back phone: "Alright, I have {{phone_number}} — is that correct?"
+- Prompt for email: "Would you like to provide an email address for appointment reminders?"
+- If yes: "Great! What's the email address?"
+- If no: "No problem, we can send reminders via text instead."
 
 ## 9. Offer appointment options
 - Prompt: "We have openings with Dr. {{doctor_1}} on {{day_1}} at {{time_1}}, or with Dr. {{doctor_2}} on {{day_2}} at {{time_2}}. Which one works better for you?"
@@ -404,7 +409,9 @@ Always follow this specific order for data collection to ensure consistency with
 - Log call outcome in system
 - Send confirmation email
 - Update patient record with new information
-- Flag any incomplete data for follow-up"""
+- Flag any incomplete data for follow-up
+***IMPORTANT***: "Whenever the user shares information, call the `collect_patient_info` function to extract and save their details."
+"""
         },
     ]
 
