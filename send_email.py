@@ -1,5 +1,7 @@
 import os
 import resend
+import re
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 
@@ -11,17 +13,98 @@ if not api_key:
 
 resend.api_key = api_key
 
+def parse_appointment_preference(appointment_preference):
+    """Parse appointment preference string into structured data"""
+    if not appointment_preference:
+        return {"doctor_name": "Not specified", "date": "Not specified", "time": "Not specified"}
+    
+    # Extract doctor name - pattern: "Dr. [Name]"
+    doctor_match = re.search(r'Dr\.\s+([A-Za-z]+)', appointment_preference)
+    doctor_name = doctor_match.group(1) if doctor_match else "Not specified"
+    
+    # Extract day/date info
+    date_info = "Not specified"
+    time_info = "Not specified"
+    
+    # Look for time patterns like "10:15 AM", "2:30 PM"
+    time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm))', appointment_preference)
+    if time_match:
+        time_info = time_match.group(1)
+    
+    # Look for day references
+    day_patterns = {
+        "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, 
+        "friday": 4, "saturday": 5, "sunday": 6
+    }
+
+    for day_name, day_num in day_patterns.items():
+        if f"next {day_name}" in appointment_preference.lower():
+            # Calculate next occurrence of this day
+            today = datetime.now()
+            days_ahead = (day_num - today.weekday()) % 7
+            if days_ahead == 0:  # Today is that day, so get next week
+                days_ahead = 7
+            target_date = today + timedelta(days=days_ahead)
+            date_info = target_date.strftime("%A, %B %d, %Y")
+            break
+        elif f"this {day_name}" in appointment_preference.lower():
+            # Calculate this week's occurrence (or next week if already passed)
+            today = datetime.now()
+            days_ahead = (day_num - today.weekday()) % 7
+            if days_ahead == 0:  # Today is that day
+                days_ahead = 7  # Get next week's occurrence
+            target_date = today + timedelta(days=days_ahead)
+            date_info = target_date.strftime("%A, %B %d, %Y")
+            break
+        elif day_name in appointment_preference.lower() and ("next" not in appointment_preference.lower() and "this" not in appointment_preference.lower()):
+            # Just the day name mentioned (assume next occurrence)
+            today = datetime.now()
+            days_ahead = (day_num - today.weekday()) % 7
+            if days_ahead == 0:
+                days_ahead = 7
+            target_date = today + timedelta(days=days_ahead)
+            date_info = target_date.strftime("%A, %B %d, %Y")
+            break
+
+    # Also handle specific date patterns like "May 30th", "June 3rd", etc.
+    date_match = re.search(r'(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?', appointment_preference.lower())
+    if date_match and date_info == "Not specified":
+        month_name = date_match.group(1)
+        day = int(date_match.group(2))
+        try:
+            current_year = datetime.now().year
+            month_num = {
+                'january': 1, 'february': 2, 'march': 3, 'april': 4,
+                'may': 5, 'june': 6, 'july': 7, 'august': 8,
+                'september': 9, 'october': 10, 'november': 11, 'december': 12
+            }[month_name]
+            target_date = datetime(current_year, month_num, day)
+            # If the date has passed this year, assume next year
+            if target_date < datetime.now():
+                target_date = datetime(current_year + 1, month_num, day)
+            date_info = target_date.strftime("%A, %B %d, %Y")
+        except (ValueError, KeyError):
+            pass  # Keep "Not specified" if parsing fails
+    
+    return {
+        "doctor_name": doctor_name,
+        "date": date_info,
+        "time": time_info
+    }
+
 def send_appointment_confirmation(patient_data, recipient_emails=None):
     """Send appointment confirmation email using Resend"""
     try:
         verified_email = "wesleysumswe@gmail.com"
         
-        appointment = patient_data.get("appointment", {})
+        # Parse the appointment preference string
+        appointment_pref = patient_data.get("appointment_preference", "")
+        parsed_appointment = parse_appointment_preference(appointment_pref)
         
         params = {
             "from": "Epic Health <onboarding@resend.dev>",
-            "to": [verified_email],  # Use the verified email for testing
-            "subject": f"Appointment for {patient_data.get('name', 'New Patient')} (DEMO)",
+            "to": [verified_email],
+            "subject": f"Appointment Confirmation for {patient_data.get('name', 'New Patient')}",
             "html": f"""
             <!DOCTYPE html>
             <html>
@@ -86,10 +169,13 @@ def send_appointment_confirmation(patient_data, recipient_emails=None):
                     <p>Your appointment has been successfully scheduled with Epic Health. Please review the details below:</p>
                     
                     <div class="appointment-details">
-                        <div class="appointment-item"><strong>Provider:</strong> Dr. {appointment.get('doctor_name', 'Not specified')}</div>
-                        <div class="appointment-item"><strong>Date:</strong> {appointment.get('date', 'Not specified')}</div>
-                        <div class="appointment-item"><strong>Time:</strong> {appointment.get('time', 'Not specified')}</div>
+                        <div class="appointment-item"><strong>Provider:</strong> Dr. {parsed_appointment['doctor_name']}</div>
+                        <div class="appointment-item"><strong>Date:</strong> {parsed_appointment['date']}</div>
+                        <div class="appointment-item"><strong>Time:</strong> {parsed_appointment['time']}</div>
                         <div class="appointment-item"><strong>Reason:</strong> {patient_data.get('chief_complaint', 'Not specified')}</div>
+                        <div class="appointment-item"><strong>Phone:</strong> {patient_data.get('phone', 'Not provided')}</div>
+                        <div class="appointment-item"><strong>Insurance:</strong> {patient_data.get('insurance_provider', 'Not specified')} (ID: {patient_data.get('insurance_id', 'Not specified')})</div>
+                        <div class="appointment-item"><strong>Referral:</strong> {patient_data.get('referral_info', 'Self-scheduled') or 'Self-scheduled'}</div>
                         <div class="appointment-item"><strong>Location:</strong> Epic Health Medical Center<br>875 Powell Street<br>Suite 203<br>San Francisco, CA 94108</div>
                     </div>
                     
@@ -133,11 +219,7 @@ def send_appointment_confirmation(patient_data, recipient_emails=None):
 if __name__ == "__main__":
     test_patient = {
         "name": "Test Patient",
-        "appointment": {
-            "doctor_name": "Smith",
-            "date": "May 30, 2025",
-            "time": "2:30 PM"
-        }
+        "appointment_preference": "Dr. Chen, next Tuesday at 10:15 AM"
     }
     
     success, message = send_appointment_confirmation(test_patient)

@@ -38,7 +38,6 @@ async def websocket_endpoint(websocket: WebSocket):
     print("Call started. Stream SID:", stream_sid, flush=True)
     await run_agent(websocket, stream_sid, app.state.testing)
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pipecat Twilio Chatbot Server")
     parser.add_argument(

@@ -206,6 +206,21 @@ collect_patient_info_schema = {
     }
 }
 
+validate_address_schema = {
+    "name": "validate_address",
+    "description": "Validate patient address in real-time during conversation. Call this when patient provides address information to ensure accuracy.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "address": {
+                "type": "string",
+                "description": "The address string to validate (street, city, state, zip)"
+            }
+        },
+        "required": ["address"]
+    }
+}
+
 async def collect_patient_info(function_call_params) -> str:
     """Function to collect and store patient information - handles Pipecat's FunctionCallParams"""
     logger.info("🔥 collect_patient_info function called!")
@@ -325,6 +340,64 @@ async def collect_patient_info(function_call_params) -> str:
         await function_call_params.result_callback(response)
     
     return response
+
+async def validate_address(function_call_params) -> str:
+    """
+    Validate patient address using SmartyStreets API during conversation
+    """
+    try:
+        logger.info(f"🏠 Address validation function called with: {function_call_params}")
+        
+        # Extract address from function parameters
+        if hasattr(function_call_params, 'arguments'):
+            params = function_call_params.arguments if isinstance(function_call_params.arguments, dict) else json.loads(function_call_params.arguments)
+        else:
+            params = function_call_params
+            
+        address = params.get('address', '').strip()
+        
+        if not address:
+            response = "I didn't catch your address clearly. Could you please repeat it slowly?"
+            logger.info(f"📤 Validation response: {response}")
+            return response
+        
+        # Validate the address
+        is_valid, message, formatted_address = await validate_patient_address(address)
+        
+        # Get current tracker
+        tracker = get_current_tracker()
+        
+        if is_valid:
+            # Update the tracker with validated address
+            tracker.update_field('address', formatted_address or address)
+            logger.info(f"✅ Address validated and stored: {formatted_address}")
+            
+            # Return confirmation message that will be spoken
+            response = f"Perfect! I've confirmed your address as {formatted_address}. Is that correct?"
+            logger.info(f"📤 Validation response: {response}")
+            return response
+        else:
+            # Don't store invalid address, ask for clarification with spoken message
+            logger.warning(f"❌ Address validation failed: {message}")
+            
+            # Create a natural spoken response for the error
+            if "not found" in message.lower():
+                response = "I'm having trouble finding that exact address in our system. Could you please double-check the street name, number, or ZIP code and repeat it for me?"
+            elif "timeout" in message.lower() or "network" in message.lower():
+                response = "I'm experiencing a technical issue with address verification. Could you please repeat your address slowly so I can record it?"
+            elif "short" in message.lower():
+                response = "That address seems incomplete. Could you provide the full address including street number, street name, city, state, and ZIP code?"
+            else:
+                response = "Let me double-check that address with you. Could you please repeat it slowly, including the street number, street name, city, state, and ZIP code?"
+            
+            logger.info(f"📤 Validation error response: {response}")
+            return response
+            
+    except Exception as e:
+        logger.error(f"Address validation error: {e}")
+        response = "I'm having some trouble with address validation right now. Could you please repeat your address slowly so I can make sure I have it recorded correctly?"
+        logger.info(f"📤 Validation exception response: {response}")
+        return response
 
 # Validation functions
 def validate_phone(phone: str) -> bool:
