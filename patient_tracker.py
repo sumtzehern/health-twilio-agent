@@ -202,7 +202,7 @@ collect_patient_info_schema = {
                 "description": "Whether patient is new or returning"
             }
         },
-        "required": []  # No required params - extract what's available
+        "required": []
     }
 }
 

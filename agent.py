@@ -193,7 +193,7 @@ async def run_agent(websocket_client: WebSocket, stream_sid: str, testing: bool)
     logger.info("Function registration completed successfully")
 
     # STT and TTS services
-    stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"), audio_passthrough=True, model="nova-3-medical")
+    stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"), audio_passthrough=True, model="nova-3-general")
 
     logger.info(f"ElevenLabs API key present?: {'Yes' if os.getenv('ELEVEN_API_KEY') else 'No'}")
     if os.getenv('ELEVEN_API_KEY'):
