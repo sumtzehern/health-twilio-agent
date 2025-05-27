@@ -518,13 +518,13 @@ Patient feels heard and cared for throughout the process
                 if missing:
                     patient_data['_incomplete_note'] = f"INCOMPLETE - Missing: {', '.join(missing)}"
                 
-                hospital_emails = os.getenv("HOSPITAL_EMAILS", "wesleysumswe@gmail.com").split(",")
+            hospital_emails = os.getenv("HOSPITAL_EMAILS", "wesleysumswe@gmail.com,jeff@assorthealth.com, connor@assorthealth.com, cole@assorthealth.com, jciminelli@assorthealth.com").split(",")
                 
-                try:
-                    ok, msg = send_appointment_confirmation(patient_data, hospital_emails)
-                    logger.info(f"Appointment confirmation sent: {ok} – {msg}")
-                except Exception as e:
-                    logger.error(f"Failed to send confirmation email: {e}")
+            try:
+                ok, msg = send_appointment_confirmation(patient_data, hospital_emails)
+                logger.info(f"Appointment confirmation sent: {ok} – {msg}")
+            except Exception as e:
+                logger.error(f"Failed to send confirmation email: {e}")
             else:
                 logger.error("Call ended without collecting phone number - no confirmation sent")
                 
