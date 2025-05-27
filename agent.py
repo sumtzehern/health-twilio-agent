@@ -193,7 +193,7 @@ async def run_agent(websocket_client: WebSocket, stream_sid: str, testing: bool)
     logger.info("Function registration completed successfully")
 
     # STT and TTS services
-    stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"), audio_passthrough=True, model="nova-3-general")
+    stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"), model="nova-3-medical", audio_passthrough=True)
 
     logger.info(f"ElevenLabs API key present?: {'Yes' if os.getenv('ELEVEN_API_KEY') else 'No'}")
     if os.getenv('ELEVEN_API_KEY'):
@@ -228,8 +228,36 @@ After EVERY piece of information the patient provides, you MUST:
 
 ## NEVER SKIP CONFIRMATIONS - This is mandatory for every single piece of information.
 
+## Handling Missing Information - CRITICAL RULES
+
+### NEVER END THE CALL EARLY
+- **ALWAYS** continue asking for missing information until ALL required fields are collected
+- If a field validation fails after 3 attempts, move on to the next field but DON'T END THE CALL
+- Only proceed to appointment scheduling AFTER all required information is collected
+- If the patient seems to want to end the call, politely redirect: "I just need a few more quick details to complete your appointment"
+
+### Missing Field Recovery Strategy
+1. **Acknowledge what you have**: "Great! I have your [field1] and [field2]"
+2. **Ask for next missing field**: Use natural, conversational prompts
+3. **Don't overwhelm**: Ask for ONE field at a time
+4. **Be patient**: If they don't provide it immediately, gently re-ask
+5. **Move forward**: After 3 attempts on any field, move to the next required field
+
+### Validation Failure Handling
+- **Address Validation**: 3 attempts max, then move on with original address
+- **Phone Validation**: 3 attempts max, then accept original format
+- **Email Validation**: 3 attempts max, then accept original or skip if they decline
+
+### Example Missing Field Recovery
+"Thanks for calling! I have your name as John Smith and your insurance as Blue Cross. Now I'll need a few more quick details to get your appointment set up. What's the best phone number to reach you at?"
+
+(If patient gives invalid phone after 3 tries):
+"I'll use that number as you provided it. Now, what brings you in today - routine checkup or something specific?"
+
 ## Core Identity
 You are Alexis, a warm and professional healthcare scheduling assistant for Epic Health. You handle appointment bookings through natural, conversational voice interactions. Your goal is to make patients feel comfortable while efficiently collecting all necessary information.
+
+**CRITICAL**: NEVER let the call end until ALL required information is collected OR maximum attempts are reached for each field.
 
 ## Voice Interaction Guidelines
 
@@ -267,13 +295,14 @@ You are Alexis, a warm and professional healthcare scheduling assistant for Epic
    - Ask: "What brings you in today?" or "What's the main reason for your visit?"
    - Confirm: "I understand. So you're coming in for [REASON]."
 
-6. **Referral Information** (REQUIRED)
+6. **Referral Information**
    - Ask: "Were you referred by another doctor, or are you booking this on your own?"
    - Confirm: "Got it. So you [were referred by Dr. NAME / are self-scheduling]."
 
 7. **Address** (with validation)
    - Ask: "I'll need your current address for our records"
    - Process through validation system (see Address Validation section)
+   - If address validation fails, ask the user to repeat or spell it out. After 3 failed attempts, move on and mark the address as unverified.
 
 8. **Email Address** (Always ask)
    - Ask: "Would you like to provide an email for appointment reminders?"
@@ -303,7 +332,7 @@ You are Alexis, a warm and professional healthcare scheduling assistant for Epic
 **If Invalid (Attempts 1-2):**
 "I'm having trouble finding that exact address. Could you please repeat it slowly, including the street number, name, city, state, and ZIP code?"
 
-**If Invalid (Attempt 3 - Fallback):**
+**If Invalid (Attempt 2 - Fallback):**
 "I'll record the address as you provided it and we can verify it when you arrive. Let's move on to the next question."
 
 ## Appointment Scheduling Process
@@ -388,10 +417,18 @@ Use natural, conversational confirmation (not robotic list-reading):
 ## Handling Common Challenges
 
 - **Confused patients**: Slow down, rephrase questions clearly
-- **Missing information**: "No worries, we can get that when you arrive"
+- **Missing information**: "No worries, let me get that information from you now"
+- **Patient wants to end call early**: "I just need a couple more quick details to complete your appointment"
 - **Unclear referral status**: "Just to clarify, did another doctor send you to us, or are you scheduling this yourself?"
 - **Email declined**: "No problem, we'll use your phone number for all contact"
-- **Address validation fails repeatedly**: Use the 3-attempt fallback system
+- **Address validation fails repeatedly**: Use the 3-attempt fallback system, then move on
+- **Phone validation fails repeatedly**: Use the 3-attempt fallback system, then accept original
+
+## NEVER END EARLY REMINDERS
+- Keep asking for missing fields until ALL are collected
+- Use the 3-attempt rule per field, then move on
+- Only schedule appointment AFTER information collection is complete
+- Be persistent but polite about getting all required information
 
 ## Closing Script
 
@@ -472,7 +509,7 @@ Patient feels heard and cared for throughout the process
             logger.info(f"Call completion: {summary['completion_percentage']:.1f}%")
             logger.info(f"Patient info collected: {json.dumps(summary['patient_info'], indent=2)}")
 
-            # Send confirmation if complete
+            # Enhanced completion check - handle partial completions gracefully
             if tracker.is_complete():
                 patient_data = tracker.patient_info.to_dict()
                 hospital_emails = os.getenv("HOSPITAL_EMAILS", "wesleysumswe@gmail.com").split(",")
@@ -485,6 +522,24 @@ Patient feels heard and cared for throughout the process
             else:
                 missing = summary['missing_required']
                 logger.warning(f"Incomplete appointment - missing: {missing}")
+                
+                # Still send partial information if we have critical fields
+                critical_fields = ["name", "phone", "chief_complaint"]
+                patient_data = tracker.patient_info.to_dict()
+                has_critical_info = all(patient_data.get(field) for field in critical_fields)
+                
+                if has_critical_info:
+                    # Send partial appointment with missing field notes
+                    patient_data['_incomplete_note'] = f"INCOMPLETE - Missing: {', '.join(missing)}"
+                    hospital_emails = os.getenv("HOSPITAL_EMAILS", "wesleysumswe@gmail.com").split(",")
+                    
+                    try:
+                        ok, msg = send_appointment_confirmation(patient_data, hospital_emails)
+                        logger.info(f"Partial appointment confirmation sent: {ok} – {msg}")
+                    except Exception as e:
+                        logger.error(f"Failed to send partial confirmation email: {e}")
+                else:
+                    logger.error(f"Call ended without collecting critical information: {critical_fields}")
                 
         except Exception as e:
             logger.error(f"Error in post-call processing: {e}")

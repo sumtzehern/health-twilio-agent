@@ -221,8 +221,34 @@ validate_address_schema = {
     }
 }
 
+# Add field attempt tracking
+class FieldAttemptTracker:
+    def __init__(self):
+        self.attempts = {}
+        self.max_attempts = 3
+    
+    def increment_attempt(self, field: str) -> int:
+        """Increment and return attempt count for a field"""
+        self.attempts[field] = self.attempts.get(field, 0) + 1
+        return self.attempts[field]
+    
+    def get_attempts(self, field: str) -> int:
+        """Get current attempt count for a field"""
+        return self.attempts.get(field, 0)
+    
+    def should_retry(self, field: str) -> bool:
+        """Check if we should retry collecting this field"""
+        return self.get_attempts(field) < self.max_attempts
+    
+    def mark_as_failed(self, field: str):
+        """Mark field as failed after max attempts"""
+        self.attempts[field] = self.max_attempts
+
+# Global attempt tracker
+attempt_tracker = FieldAttemptTracker()
+
 async def collect_patient_info(function_call_params) -> str:
-    """Function to collect and store patient information - handles Pipecat's FunctionCallParams"""
+    """Enhanced function to collect and store patient information with robust missing field handling"""
     logger.info("🔥 collect_patient_info function called!")
     
     # Extract the arguments from FunctionCallParams object
@@ -230,47 +256,82 @@ async def collect_patient_info(function_call_params) -> str:
     logger.info(f"📥 Received arguments: {json.dumps(kwargs, indent=2)}")
     
     tracker = get_current_tracker()
+    global attempt_tracker
     
-    # Special handling for address validation
+    # Special handling for address validation with retry logic
     if 'address' in kwargs and kwargs['address']:
         address = kwargs['address']
         logger.info(f"🏠 Validating address: {address}")
         
         try:
             is_valid, message, formatted_address = await validate_patient_address(address)
+            attempt_count = attempt_tracker.increment_attempt('address')
             
             if is_valid and formatted_address:
                 # Use the validated/formatted address
                 kwargs['address'] = formatted_address
                 logger.info(f"✅ Address validated and formatted: {formatted_address}")
+                # Reset attempts for successful validation
+                attempt_tracker.attempts['address'] = 0
             else:
-                # Address validation failed - still store what they provided but ask for clarification
-                logger.warning(f"⚠️ Address validation failed: {message}")
+                # Address validation failed
+                logger.warning(f"⚠️ Address validation failed (attempt {attempt_count}): {message}")
                 
-                # Store the original address
-                results = tracker.update_multiple_fields(kwargs)
-                
-                # Return the validation message
-                if hasattr(function_call_params, 'result_callback'):
-                    await function_call_params.result_callback(message)
-                return message
+                if attempt_tracker.should_retry('address'):
+                    # Store the original address but ask for retry
+                    results = tracker.update_multiple_fields(kwargs)
+                    return f"I'm having trouble finding that exact address. Could you please repeat it slowly, including the street number, name, city, state, and ZIP code? (Attempt {attempt_count} of {attempt_tracker.max_attempts})"
+                else:
+                    # Max attempts reached - accept the address and move on
+                    attempt_tracker.mark_as_failed('address')
+                    kwargs['address'] = address  # Use original address
+                    logger.info(f"📝 Max address attempts reached, storing original: {address}")
+                    results = tracker.update_multiple_fields(kwargs)
+                    return "I'll record the address as you provided it and we can verify it when you arrive. Now, let's continue with the next question."
                 
         except Exception as e:
             logger.error(f"❌ Address validation error: {e}")
             # Continue with original address if validation service fails
             pass
     
-    # Add phone validation
+    # Enhanced phone validation with retry logic
     if 'phone' in kwargs and kwargs['phone']:
         phone = kwargs['phone']
+        attempt_count = attempt_tracker.increment_attempt('phone')
         is_valid, formatted_or_error = validate_phone(phone)
         
         if is_valid:
             kwargs['phone'] = formatted_or_error  # Use formatted version
             logger.info(f"📞 Phone validated and formatted: {formatted_or_error}")
+            attempt_tracker.attempts['phone'] = 0  # Reset on success
         else:
-            logger.warning(f"📞 Phone validation failed: {formatted_or_error}")
-            return f"I need to double-check that phone number. {formatted_or_error}. Could you please repeat your phone number?"
+            logger.warning(f"📞 Phone validation failed (attempt {attempt_count}): {formatted_or_error}")
+            
+            if attempt_tracker.should_retry('phone'):
+                return f"I need to double-check that phone number. {formatted_or_error}. Could you please repeat your phone number? (Attempt {attempt_count} of {attempt_tracker.max_attempts})"
+            else:
+                # Max attempts reached - store as-is and move on
+                attempt_tracker.mark_as_failed('phone')
+                kwargs['phone'] = phone  # Use original
+                logger.info(f"📝 Max phone attempts reached, storing original: {phone}")
+    
+    # Enhanced email validation with retry logic
+    if 'email' in kwargs and kwargs['email']:
+        email = kwargs['email']
+        attempt_count = attempt_tracker.increment_attempt('email')
+        
+        if validate_email(email):
+            logger.info(f"📧 Email validated: {email}")
+            attempt_tracker.attempts['email'] = 0  # Reset on success
+        else:
+            logger.warning(f"📧 Email validation failed (attempt {attempt_count}): {email}")
+            
+            if attempt_tracker.should_retry('email'):
+                return f"That doesn't look like a valid email address. Could you please repeat your email? (Attempt {attempt_count} of {attempt_tracker.max_attempts})"
+            else:
+                # Max attempts reached - store as-is and move on
+                attempt_tracker.mark_as_failed('email')
+                logger.info(f"📝 Max email attempts reached, storing original: {email}")
     
     # Update fields that were provided
     results = tracker.update_multiple_fields(kwargs)
@@ -291,14 +352,14 @@ async def collect_patient_info(function_call_params) -> str:
     logger.info(f"📋 Missing fields: {missing}")
     logger.info(f"➡️ Next field needed: {next_field}")
     
-    # Generate natural, conversational responses
+    # CRITICAL: Always continue collecting missing information - NEVER end early
     if tracker.is_complete():
         # Create a natural confirmation summary
         info = tracker.patient_info
         response = f"Perfect! I have everything I need. Just to confirm - I have you down as {info.name}, born {info.dob}, with {info.insurance_provider} insurance. You're coming in for {info.chief_complaint}, and you prefer {info.appointment_preference} appointments. Does that all sound correct?"
         
     elif next_field:
-        # Natural prompts for next field
+        # ALWAYS ask for the next missing field - this prevents early call endings
         natural_prompts = {
             "name": "Can I get your full name, please?",
             "dob": "And what's your date of birth?",
@@ -325,7 +386,7 @@ async def collect_patient_info(function_call_params) -> str:
                 "insurance_provider": "Okay, noted.",
                 "insurance_id": "Thanks for that.",
                 "chief_complaint": "Understood.",
-                "address": "Thank you.", # This will be overridden by validation message if address was provided
+                "address": "Thank you.",
                 "appointment_preference": "Sounds good.",
                 "email": "Perfect.",
                 "referral_info": "Got it.",
@@ -341,17 +402,56 @@ async def collect_patient_info(function_call_params) -> str:
             response = f"{ack} {prompt}"
         else:
             response = prompt
-            
     else:
-        response = "Thanks for that information. Is there anything else you'd like to add or update?"
+        # Fallback - should rarely happen, but ensures conversation continues
+        missing_list = list(missing)
+        if missing_list:
+            next_missing = missing_list[0]
+            fallback_prompt = f"Can you tell me about your {next_missing.replace('_', ' ')}?"
+            response = f"Let me get some more information from you. {natural_prompts.get(next_missing, fallback_prompt)}"
+        else:
+            response = "Thanks for that information. Is there anything else you'd like to add or update?"
     
     logger.info(f"📤 Function returning response: {response}")
     
-    # Call the result callback as required by Pipecat
+    # Call callback if provided (Pipecat integration)
     if hasattr(function_call_params, 'result_callback'):
         await function_call_params.result_callback(response)
     
     return response
+
+# Add this helper function to handle graceful field collection
+def get_graceful_missing_field_response(missing_fields: list) -> str:
+    """Generate a natural response for collecting missing fields"""
+    if not missing_fields:
+        return "Great! I think I have everything I need."
+    
+    # Priority order for collecting fields
+    priority_order = [
+        "name", "dob", "phone", "insurance_provider", "insurance_id", 
+        "chief_complaint", "referral_info", "address", "email", 
+        "patient_status", "appointment_preference"
+    ]
+    
+    # Find the next field to collect based on priority
+    for field in priority_order:
+        if field in missing_fields:
+            natural_prompts = {
+                "name": "Let me start by getting your full name.",
+                "dob": "And what's your date of birth?",
+                "phone": "What's the best phone number to reach you at?",
+                "insurance_provider": "What insurance company do you have?",
+                "insurance_id": "And what's your member ID number?",
+                "chief_complaint": "What brings you in today?",
+                "address": "I'll need your current address for our records.",
+                "appointment_preference": "When would work best for your appointment?",
+                "email": "Would you like to provide an email for appointment reminders?",
+                "referral_info": "Were you referred by another doctor, or are you scheduling this yourself?",
+                "patient_status": "Are you a new patient with us, or have you been here before?"
+            }
+            return natural_prompts.get(field, f"Can you tell me about your {field.replace('_', ' ')}?")
+    
+    return "Let me gather a bit more information from you."
 
 async def validate_address(function_call_params) -> str:
     """
@@ -409,7 +509,7 @@ async def validate_address(function_call_params) -> str:
         logger.error(f"Address validation error: {e}")
         response = "I'm having some trouble with address validation right now. Could you please repeat your address slowly so I can make sure I have it recorded correctly?"
         logger.info(f"📤 Validation exception response: {response}")
-        return response
+    return response
 
 # Validation functions
 def validate_phone(phone: str) -> tuple[bool, str]:
@@ -459,5 +559,6 @@ def validate_dob(dob: str) -> bool:
             except ValueError:
                 continue
         return False
-    except:
+    except Exception as e:
+        logger.error(f"Date of birth validation error: {e}")
         return False
