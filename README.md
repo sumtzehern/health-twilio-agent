@@ -38,11 +38,7 @@ This system creates an intelligent voice assistant named "Alexis" that can:
 - **aiohttp** - Async HTTP client
 
 ## 🏗️ System Architecture
-Phone Call (Twilio) → ngrok → FastAPI Server → Pipecat Pipeline
-↓
-[STT] → [LLM + Functions] → [TTS] → WebSocket → Twilio → Caller
-↓
-[Patient Tracker] → [Address Validator] → [Email Sender]
+<img width="1334" alt="AI Voice agent workflow" src="https://github.com/user-attachments/assets/db289773-158c-402f-8c3b-92b860a8baf2" />
 
 ## 📋 Use Cases
 
