@@ -171,13 +171,7 @@ async def run_agent(websocket_client: WebSocket, stream_sid: str, testing: bool)
             audio_out_enabled=True,
             add_wav_header=False,
             vad_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(
-                params=SileroVADAnalyzer.InputParams(
-                stop_secs=0.8,      
-                start_secs=0.2,   
-                min_volume=0.5,     
-                min_confidence=0.7 
-            )),
+            vad_analyzer=SileroVADAnalyzer(),
             vad_audio_passthrough=True,
             serializer=TwilioFrameSerializer(stream_sid),
         ),
