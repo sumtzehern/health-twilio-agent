@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="wss://health-twilio-agent-production.up.railway.app/audio-stream"></Stream>
+  </Connect>
+  <Pause length="40"/>
+
+</Response>
+
