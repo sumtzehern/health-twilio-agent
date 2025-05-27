@@ -260,6 +260,18 @@ async def collect_patient_info(function_call_params) -> str:
             # Continue with original address if validation service fails
             pass
     
+    # Add phone validation
+    if 'phone' in kwargs and kwargs['phone']:
+        phone = kwargs['phone']
+        is_valid, formatted_or_error = validate_phone(phone)
+        
+        if is_valid:
+            kwargs['phone'] = formatted_or_error  # Use formatted version
+            logger.info(f"📞 Phone validated and formatted: {formatted_or_error}")
+        else:
+            logger.warning(f"📞 Phone validation failed: {formatted_or_error}")
+            return f"I need to double-check that phone number. {formatted_or_error}. Could you please repeat your phone number?"
+    
     # Update fields that were provided
     results = tracker.update_multiple_fields(kwargs)
     updated_fields = [k for k, v in results.items() if v]
@@ -400,12 +412,35 @@ async def validate_address(function_call_params) -> str:
         return response
 
 # Validation functions
-def validate_phone(phone: str) -> bool:
-    """Basic phone validation"""
+def validate_phone(phone: str) -> tuple[bool, str]:
+    """Enhanced phone validation with detailed feedback"""
     import re
+    
+    if not phone:
+        return False, "Phone number is required"
+    
     # Remove all non-digits
     digits = re.sub(r'\D', '', phone)
-    return len(digits) >= 10
+    
+    # Check length
+    if len(digits) < 10:
+        return False, f"Phone number too short - needs 10 digits, got {len(digits)}"
+    elif len(digits) > 11:
+        return False, f"Phone number too long - maximum 11 digits, got {len(digits)}"
+    elif len(digits) == 11 and not digits.startswith('1'):
+        return False, "11-digit number must start with 1 (country code)"
+    
+    # Format validation
+    if len(digits) == 10:
+        # US phone number format
+        formatted = f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+        return True, formatted
+    elif len(digits) == 11 and digits.startswith('1'):
+        # US phone with country code
+        formatted = f"+1 ({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
+        return True, formatted
+    
+    return False, "Invalid phone number format"
 
 def validate_email(email: str) -> bool:
     """Basic email validation"""
