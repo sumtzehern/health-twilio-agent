@@ -88,3 +88,8 @@ The system provides comprehensive logging:
 - **Address validation** - Success/failure with details
 - **Email sending** - Confirmation delivery status
 - **Audio processing** - STT/TTS performance
+- 
+## Email Confirmation:
+<img width="604" alt="Screenshot 2025-05-27 at 12 44 25 PM" src="https://github.com/user-attachments/assets/91fa337a-bcc5-4de5-b7c9-08fcb2a3e872" />
+<img width="605" alt="Screenshot 2025-05-27 at 12 44 40 PM" src="https://github.com/user-attachments/assets/65f4260e-6030-4abf-952d-606816cec14a" />
+
