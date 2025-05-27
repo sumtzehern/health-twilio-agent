@@ -101,10 +101,27 @@ def send_appointment_confirmation(patient_data, recipient_emails=None):
         appointment_pref = patient_data.get("appointment_preference", "")
         parsed_appointment = parse_appointment_preference(appointment_pref)
         
+        # Handle missing information gracefully
+        name = patient_data.get('name', 'New Patient')
+        phone = patient_data.get('phone', 'Not provided')
+        chief_complaint = patient_data.get('chief_complaint', 'Not specified')
+        insurance_provider = patient_data.get('insurance_provider', 'Not specified')
+        insurance_id = patient_data.get('insurance_id', 'Not specified')
+        referral_info = patient_data.get('referral_info', 'Self-scheduled') or 'Self-scheduled'
+        
+        # Add note about incomplete information if present
+        incomplete_note = ""
+        if '_incomplete_note' in patient_data:
+            incomplete_note = f"""
+            <div style="background-color: #fff3cd; color: #856404; padding: 10px; margin: 10px 0; border: 1px solid #ffeeba; border-radius: 4px;">
+                <strong>Note:</strong> {patient_data['_incomplete_note']}
+            </div>
+            """
+        
         params = {
             "from": "Epic Health <onboarding@resend.dev>",
             "to": [verified_email],
-            "subject": f"Appointment Confirmation for {patient_data.get('name', 'New Patient')}",
+            "subject": f"Appointment Confirmation for {name}",
             "html": f"""
             <!DOCTYPE html>
             <html>
@@ -155,6 +172,10 @@ def send_appointment_confirmation(patient_data, recipient_emails=None):
                         font-weight: bold;
                         color: #0066cc;
                     }}
+                    .missing-info {{
+                        color: #856404;
+                        font-style: italic;
+                    }}
                 </style>
             </head>
             <body>
@@ -164,7 +185,9 @@ def send_appointment_confirmation(patient_data, recipient_emails=None):
                 </div>
                 
                 <div class="content">
-                    <p>Dear {patient_data.get('name', 'Patient')},</p>
+                    {incomplete_note}
+                    
+                    <p>Dear {name},</p>
                     
                     <p>Your appointment has been successfully scheduled with Epic Health. Please review the details below:</p>
                     
@@ -172,10 +195,10 @@ def send_appointment_confirmation(patient_data, recipient_emails=None):
                         <div class="appointment-item"><strong>Provider:</strong> Dr. {parsed_appointment['doctor_name']}</div>
                         <div class="appointment-item"><strong>Date:</strong> {parsed_appointment['date']}</div>
                         <div class="appointment-item"><strong>Time:</strong> {parsed_appointment['time']}</div>
-                        <div class="appointment-item"><strong>Reason:</strong> {patient_data.get('chief_complaint', 'Not specified')}</div>
-                        <div class="appointment-item"><strong>Phone:</strong> {patient_data.get('phone', 'Not provided')}</div>
-                        <div class="appointment-item"><strong>Insurance:</strong> {patient_data.get('insurance_provider', 'Not specified')} (ID: {patient_data.get('insurance_id', 'Not specified')})</div>
-                        <div class="appointment-item"><strong>Referral:</strong> {patient_data.get('referral_info', 'Self-scheduled') or 'Self-scheduled'}</div>
+                        <div class="appointment-item"><strong>Reason:</strong> {chief_complaint}</div>
+                        <div class="appointment-item"><strong>Phone:</strong> {phone}</div>
+                        <div class="appointment-item"><strong>Insurance:</strong> {insurance_provider} (ID: {insurance_id})</div>
+                        <div class="appointment-item"><strong>Referral:</strong> {referral_info}</div>
                         <div class="appointment-item"><strong>Location:</strong> Epic Health Medical Center<br>875 Powell Street<br>Suite 203<br>San Francisco, CA 94108</div>
                     </div>
                     
@@ -198,8 +221,6 @@ def send_appointment_confirmation(patient_data, recipient_emails=None):
                 
                 <div class="footer">
                     <p>Epic Health Medical Center | 875 Powell Street, San Francisco, CA 94108</p>
-                    <p>Phone: (555) 123-4567 | Email: info@epichealth.com</p>
-                    <p>This email contains confidential information and is intended solely for the named recipient.</p>
                 </div>
             </body>
             </html>
@@ -208,12 +229,11 @@ def send_appointment_confirmation(patient_data, recipient_emails=None):
         
         # Send the email
         response = resend.Emails.send(params)
-        print(f"Email sent: {response}")
         return True, "Email sent successfully"
         
     except Exception as e:
-        print(f"Error sending email: {str(e)}")
-        return False, f"Failed to send email: {str(e)}"
+        logger.error(f"Error sending appointment confirmation: {e}")
+        return False, str(e)
 
 # Test the function
 if __name__ == "__main__":

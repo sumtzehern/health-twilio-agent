@@ -509,9 +509,15 @@ Patient feels heard and cared for throughout the process
             logger.info(f"Call completion: {summary['completion_percentage']:.1f}%")
             logger.info(f"Patient info collected: {json.dumps(summary['patient_info'], indent=2)}")
 
-            # Enhanced completion check - handle partial completions gracefully
-            if tracker.is_complete():
-                patient_data = tracker.patient_info.to_dict()
+            patient_data = tracker.patient_info.to_dict()
+            
+            # Check if we have at least a phone number
+            if patient_data.get('phone'):
+                # Add a note about missing information if any
+                missing = summary['missing_required']
+                if missing:
+                    patient_data['_incomplete_note'] = f"INCOMPLETE - Missing: {', '.join(missing)}"
+                
                 hospital_emails = os.getenv("HOSPITAL_EMAILS", "wesleysumswe@gmail.com").split(",")
                 
                 try:
@@ -520,26 +526,7 @@ Patient feels heard and cared for throughout the process
                 except Exception as e:
                     logger.error(f"Failed to send confirmation email: {e}")
             else:
-                missing = summary['missing_required']
-                logger.warning(f"Incomplete appointment - missing: {missing}")
-                
-                # Still send partial information if we have critical fields
-                critical_fields = ["name", "phone", "chief_complaint"]
-                patient_data = tracker.patient_info.to_dict()
-                has_critical_info = all(patient_data.get(field) for field in critical_fields)
-                
-                if has_critical_info:
-                    # Send partial appointment with missing field notes
-                    patient_data['_incomplete_note'] = f"INCOMPLETE - Missing: {', '.join(missing)}"
-                    hospital_emails = os.getenv("HOSPITAL_EMAILS", "wesleysumswe@gmail.com").split(",")
-                    
-                    try:
-                        ok, msg = send_appointment_confirmation(patient_data, hospital_emails)
-                        logger.info(f"Partial appointment confirmation sent: {ok} – {msg}")
-                    except Exception as e:
-                        logger.error(f"Failed to send partial confirmation email: {e}")
-                else:
-                    logger.error(f"Call ended without collecting critical information: {critical_fields}")
+                logger.error("Call ended without collecting phone number - no confirmation sent")
                 
         except Exception as e:
             logger.error(f"Error in post-call processing: {e}")
