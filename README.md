@@ -29,7 +29,7 @@ This system creates an intelligent voice assistant named "Alexis" that can:
 ### Communication & Validation
 - **Twilio** - Phone system integration
 - **SmartyStreets API** - Real-time address validation
-- **SMTP Email** - Appointment confirmations
+- **Resend** - Appointment confirmations
 - **ngrok** - Secure tunneling for development
 
 ### Additional Tools
