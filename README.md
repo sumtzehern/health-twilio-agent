@@ -21,7 +21,7 @@ This system creates an intelligent voice assistant named "Alexis" that can:
 - **Python 3.8+** - Backend language
 
 ### AI & Voice Services
-- **OpenAI GPT-4o** - Large Language Model for conversation
+- **Anthropic** - Large Language Model for conversation
 - **ElevenLabs** - Text-to-Speech (TTS) synthesis
 - **Deepgram** - Speech-to-Text (STT) transcription
 - **Silero VAD** - Voice Activity Detection

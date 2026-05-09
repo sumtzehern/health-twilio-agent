@@ -21,15 +21,14 @@ from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.transports.network.fastapi_websocket import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
 )
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
-from openai.types.chat import ChatCompletionMessage
-from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 
 from send_email import send_appointment_confirmation
 from patient_tracker import (
@@ -70,8 +69,8 @@ async def save_audio(server_name: str, audio: bytes, sample_rate: int, num_chann
 async def parse_transcript_for_patient_info(transcript: str) -> dict:
     """Parse the entire conversation transcript to extract patient information"""
     
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    
+    client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
     parsing_prompt = f"""
 You are a data extraction specialist. Extract patient information from this healthcare conversation transcript.
 
@@ -96,14 +95,15 @@ Example: {{"name": "John Smith", "dob": "03/15/1985", "phone": "555-123-4567", "
 """
 
     try:
-        response = await client.chat.completions.create(
-            model="gpt-4o",
+        response = await client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
             messages=[{"role": "user", "content": parsing_prompt}],
             temperature=0.1
         )
-        
+
         # Parse the JSON response
-        extracted_data = json.loads(response.choices[0].message.content)
+        extracted_data = json.loads(response.content[0].text)
         logger.info(f"Extracted data from transcript: {extracted_data}")
         return extracted_data
         
@@ -178,10 +178,10 @@ async def run_agent(websocket_client: WebSocket, stream_sid: str, testing: bool)
     )
 
     # LLM service with function calling
-    llm = OpenAILLMService(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        model="gpt-4o",
-        params=OpenAILLMService.InputParams(
+    llm = AnthropicLLMService(
+        api_key=os.getenv("ANTHROPIC_API_KEY"),
+        model="claude-sonnet-4-6",
+        params=AnthropicLLMService.InputParams(
             temperature=0.1
         )
     )

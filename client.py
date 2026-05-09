@@ -34,7 +34,7 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.services.anthropic.llm import AnthropicLLMService
 
 # Transport
 from pipecat.transports.network.websocket_client import (
@@ -148,7 +148,11 @@ async def run_client(client_name: str, server_url: str, duration_secs: int):
         ),
     )
 
-    llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o", functions=[PatientInfoTracker])
+    llm = AnthropicLLMService(
+        api_key=os.getenv("ANTHROPIC_API_KEY"),
+        model="claude-sonnet-4-6",
+        params=AnthropicLLMService.InputParams(temperature=0.1)
+    )
 
     # let the audio passthrough so we can record the conversation.
     stt = DeepgramSTTService(

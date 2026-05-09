@@ -1,36 +1,30 @@
 # test_llm.py
 """
-Comprehensive test script to verify OpenAI function calling and patient data collection
+Comprehensive test script to verify Claude function calling and patient data collection
 without requiring phone calls
 """
 
 import asyncio
 import json
 import os
-from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 from patient_tracker import (
-    collect_patient_info_schema, 
-    collect_patient_info, 
+    collect_patient_info_schema,
+    collect_patient_info,
     set_new_tracker,
     get_current_tracker
 )
 
-async def test_conversation_flow():
-    """Test the complete conversation flow with function calling"""
-    
-    print("🧪 Testing Complete Conversation Flow")
-    print("=" * 60)
-    
-    # Initialize tracker
-    set_new_tracker()
-    
-    # Initialize OpenAI client
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    
-    # Enhanced system prompt (same as your agent)
-    system_prompt = """You are Alexis. A friendly, proactive, highly intelligent female with a warm, highly capable, and naturally empathetic healthcare scheduling assistant with a calm, professional voice and reassuring tone.
+# Anthropic tool schema (uses input_schema instead of parameters)
+anthropic_collect_patient_info_schema = {
+    "name": collect_patient_info_schema["name"],
+    "description": collect_patient_info_schema["description"],
+    "input_schema": collect_patient_info_schema["parameters"],
+}
 
-🚨 CRITICAL FUNCTION CALLING RULE 🚨
+SYSTEM_PROMPT = """You are Alexis. A friendly, proactive, highly intelligent female with a warm, highly capable, and naturally empathetic healthcare scheduling assistant with a calm, professional voice and reassuring tone.
+
+CRITICAL FUNCTION CALLING RULE:
 BEFORE responding to ANY patient message, you MUST FIRST call the `collect_patient_info` function if they shared personal information. This is MANDATORY - no exceptions.
 
 WORKFLOW FOR EVERY RESPONSE:
@@ -46,12 +40,22 @@ CRITICAL INSTRUCTIONS:
 
 EXAMPLE INTERACTION:
 Patient: "Hi, I need to schedule an appointment. My name is John Smith."
-You: *FIRST call collect_patient_info(name="John Smith")* 
+You: *FIRST call collect_patient_info(name="John Smith")*
 THEN respond: "Thanks John! I've got your name. Now, can I get your date of birth?"
 
-🚨 REMEMBER: Function call FIRST, then respond! 🚨"""
-    
-    # Test conversation scenarios
+REMEMBER: Function call FIRST, then respond!"""
+
+
+async def test_conversation_flow():
+    """Test the complete conversation flow with function calling"""
+
+    print("🧪 Testing Complete Conversation Flow")
+    print("=" * 60)
+
+    set_new_tracker()
+
+    client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
     test_scenarios = [
         {
             "user_input": "Hi, I need to schedule an appointment. My name is Sarah Johnson.",
@@ -89,104 +93,105 @@ THEN respond: "Thanks John! I've got your name. Now, can I get your date of birt
             "expected_data": {"appointment_preference": "morning appointments, around 10 AM"}
         }
     ]
-    
-    # Initialize conversation
+
+    # Conversation history (without system message — passed separately in Anthropic API)
     messages = [
-        {"role": "system", "content": system_prompt},
         {"role": "assistant", "content": "Hello! Thank you for calling Epic Health. This is Alexis, how can I help you today?"}
     ]
-    
+
     print("🤖 Assistant: Hello! Thank you for calling Epic Health. This is Alexis, how can I help you today?")
     print()
-    
-    # Run through test scenarios
+
     for i, scenario in enumerate(test_scenarios, 1):
         print(f"📝 Test {i}: {scenario['user_input']}")
-        
-        # Add user message
+
         messages.append({"role": "user", "content": scenario["user_input"]})
-        
+
         try:
-            # Make API call
-            response = await client.chat.completions.create(
-                model="gpt-4o",
+            response = await client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1024,
+                system=SYSTEM_PROMPT,
                 messages=messages,
-                functions=[collect_patient_info_schema],
-                function_call="auto",
+                tools=[anthropic_collect_patient_info_schema],
                 temperature=0.1
             )
-            
-            message = response.choices[0].message
-            
-            # Check if function was called
-            if hasattr(message, 'function_call') and message.function_call:
+
+            # Find tool_use block if present
+            tool_use_block = next(
+                (block for block in response.content if block.type == "tool_use"),
+                None
+            )
+
+            if tool_use_block:
                 print("✅ Function was called!")
-                print(f"   Function: {message.function_call.name}")
-                print(f"   Arguments: {message.function_call.arguments}")
-                
-                # Execute the function
-                args = json.loads(message.function_call.arguments)
-                result = await collect_patient_info(**args)
-                
-                # Add function result to conversation
+                print(f"   Function: {tool_use_block.name}")
+                print(f"   Arguments: {json.dumps(tool_use_block.input)}")
+
+                # Execute the function with direct kwargs (input is already a dict)
+                result = await collect_patient_info(**tool_use_block.input)
+
+                # Add assistant turn (tool use) and tool result to history
+                messages.append({"role": "assistant", "content": response.content})
                 messages.append({
-                    "role": "assistant",
-                    "content": None,
-                    "function_call": {
-                        "name": message.function_call.name,
-                        "arguments": message.function_call.arguments
-                    }
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_block.id,
+                        "content": result
+                    }]
                 })
-                messages.append({
-                    "role": "function",
-                    "name": message.function_call.name,
-                    "content": result
-                })
-                
+
                 # Get follow-up response
-                follow_up = await client.chat.completions.create(
-                    model="gpt-4o",
+                follow_up = await client.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=1024,
+                    system=SYSTEM_PROMPT,
                     messages=messages,
-                    functions=[collect_patient_info_schema],
-                    function_call="auto",
+                    tools=[anthropic_collect_patient_info_schema],
                     temperature=0.1
                 )
-                
-                assistant_response = follow_up.choices[0].message.content
-                messages.append({"role": "assistant", "content": assistant_response})
-                
-                print(f"🤖 Assistant: {assistant_response}")
-                
+
+                assistant_text = next(
+                    (block.text for block in follow_up.content if hasattr(block, "text")),
+                    ""
+                )
+                messages.append({"role": "assistant", "content": assistant_text})
+                print(f"🤖 Assistant: {assistant_text}")
+
             else:
                 print("❌ Function was NOT called")
-                if message.content:
-                    print(f"🤖 Assistant: {message.content}")
-                    messages.append({"role": "assistant", "content": message.content})
-            
+                text = next(
+                    (block.text for block in response.content if hasattr(block, "text")),
+                    ""
+                )
+                if text:
+                    print(f"🤖 Assistant: {text}")
+                    messages.append({"role": "assistant", "content": text})
+
         except Exception as e:
             print(f"❌ Error: {e}")
-        
+
         print("-" * 40)
-    
-    # Final status check
+
     print("\n📊 FINAL STATUS:")
     tracker = get_current_tracker()
     summary = tracker.get_summary()
-    
+
     print(f"Completion: {summary['completion_percentage']:.1f}%")
     print(f"Collected Data: {json.dumps(summary['patient_info'], indent=2)}")
     print(f"Missing Fields: {summary['missing_required']}")
     print(f"Is Complete: {summary['is_complete']}")
 
+
 async def test_individual_function_calls():
     """Test individual function calls with specific data"""
-    
+
     print("\n🔧 Testing Individual Function Calls")
     print("=" * 60)
-    
-    # Reset tracker
+
     set_new_tracker()
-    
+
     test_data = [
         {"name": "John Doe"},
         {"dob": "01/15/1985"},
@@ -196,7 +201,7 @@ async def test_individual_function_calls():
         {"phone": "312-555-0123"},
         {"appointment_preference": "Tuesday afternoons"}
     ]
-    
+
     for i, data in enumerate(test_data, 1):
         print(f"Test {i}: {data}")
         try:
@@ -205,43 +210,42 @@ async def test_individual_function_calls():
         except Exception as e:
             print(f"❌ Error: {e}")
         print("-" * 30)
-    
-    # Final status
+
     tracker = get_current_tracker()
     summary = tracker.get_summary()
     print(f"\n📊 Final completion: {summary['completion_percentage']:.1f}%")
 
+
 async def test_api_keys():
     """Test if all API keys are working"""
-    
+
     print("\n🔑 Testing API Keys")
     print("=" * 60)
-    
-    # Test OpenAI
+
     try:
-        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        response = await client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "Hello"}],
-            max_tokens=10
+        client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        response = await client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Hello"}]
         )
-        print("✅ OpenAI API: Working")
+        print("✅ Anthropic API: Working")
     except Exception as e:
-        print(f"❌ OpenAI API: {e}")
-    
-    # Test other APIs (you can add Deepgram and ElevenLabs tests here)
+        print(f"❌ Anthropic API: {e}")
+
     print("✅ Deepgram API: Skipped (requires audio)")
     print("✅ ElevenLabs API: Skipped (requires TTS)")
+
 
 async def main():
     """Run all tests"""
     print("🚀 Starting Comprehensive Function Calling Tests")
     print("=" * 80)
-    
+
     await test_api_keys()
     await test_individual_function_calls()
     await test_conversation_flow()
-    
+
     print("\n🎉 All tests completed!")
 
 if __name__ == "__main__":
