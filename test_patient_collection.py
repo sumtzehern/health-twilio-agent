@@ -11,11 +11,7 @@ from patient_tracker import (
     set_new_tracker,
     get_current_tracker
 )
-
-class MockFunctionCallParams:
-    """Mimics Pipecat's FunctionCallParams for testing."""
-    def __init__(self, **kwargs):
-        self.arguments = kwargs
+from test_helpers import MockFunctionCallParams
 
 async def test_data_collection():
     """Test the patient data collection system"""

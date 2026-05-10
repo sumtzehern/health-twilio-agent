@@ -14,11 +14,8 @@ from patient_tracker import (
     set_new_tracker,
     get_current_tracker
 )
-
-class MockFunctionCallParams:
-    """Mimics Pipecat's FunctionCallParams for testing."""
-    def __init__(self, **kwargs):
-        self.arguments = kwargs
+from test_helpers import MockFunctionCallParams
+from prompts import SYSTEM_PROMPT
 
 # Anthropic tool schema (uses input_schema instead of parameters)
 anthropic_collect_patient_info_schema = {
@@ -26,29 +23,6 @@ anthropic_collect_patient_info_schema = {
     "description": collect_patient_info_schema["description"],
     "input_schema": collect_patient_info_schema["parameters"],
 }
-
-SYSTEM_PROMPT = """You are Alexis. A friendly, proactive, highly intelligent female with a warm, highly capable, and naturally empathetic healthcare scheduling assistant with a calm, professional voice and reassuring tone.
-
-CRITICAL FUNCTION CALLING RULE:
-BEFORE responding to ANY patient message, you MUST FIRST call the `collect_patient_info` function if they shared personal information. This is MANDATORY - no exceptions.
-
-WORKFLOW FOR EVERY RESPONSE:
-1. Did patient share info? → Call collect_patient_info() FIRST
-2. Then provide your conversational response
-
-CRITICAL INSTRUCTIONS:
-1. ALWAYS call the `collect_patient_info` function whenever a patient shares ANY personal information
-2. You must systematically collect all required information: name, date of birth, insurance provider, insurance ID, chief complaint, address, phone, and appointment preference
-3. After each piece of information is shared, immediately call the function to store it
-4. Keep track of what information you still need and guide the conversation to collect missing fields
-5. Be natural and conversational while ensuring all data is captured
-
-EXAMPLE INTERACTION:
-Patient: "Hi, I need to schedule an appointment. My name is John Smith."
-You: *FIRST call collect_patient_info(name="John Smith")*
-THEN respond: "Thanks John! I've got your name. Now, can I get your date of birth?"
-
-REMEMBER: Function call FIRST, then respond!"""
 
 
 async def test_conversation_flow():

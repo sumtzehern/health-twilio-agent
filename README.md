@@ -18,7 +18,7 @@ The naive approach (transcribe → send full context to LLM → speak response) 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                          INBOUND CALL FLOW                              │
 └─────────────────────────────────────────────────────────────────────────┘
-
+git
   Patient Phone
        │
        │  PSTN (mulaw 8kHz)

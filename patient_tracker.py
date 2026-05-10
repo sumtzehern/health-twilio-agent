@@ -146,8 +146,9 @@ def get_current_tracker() -> PatientTracker:
 
 def set_new_tracker():
     """Create a new tracker instance"""
-    global current_tracker
+    global current_tracker, attempt_tracker
     current_tracker = PatientTracker()
+    attempt_tracker = FieldAttemptTracker()
     return current_tracker
 
 # Function schemas for OpenAI function calling
