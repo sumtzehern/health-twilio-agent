@@ -12,6 +12,11 @@ from patient_tracker import (
     get_current_tracker
 )
 
+class MockFunctionCallParams:
+    """Mimics Pipecat's FunctionCallParams for testing."""
+    def __init__(self, **kwargs):
+        self.arguments = kwargs
+
 async def test_data_collection():
     """Test the patient data collection system"""
     
@@ -59,7 +64,7 @@ async def test_data_collection():
         print(f"   Input: {scenario['data']}")
         
         # Call the collection function
-        response = await collect_patient_info(**scenario['data'])
+        response = await collect_patient_info(MockFunctionCallParams(**scenario['data']))
         print(f"   Response: {response[:100]}...")
         
         # Show current status
@@ -101,7 +106,7 @@ async def test_incomplete_scenario():
         "chief_complaint": "Follow-up appointment"
     }
     
-    response = await collect_patient_info(**partial_data)
+    response = await collect_patient_info(MockFunctionCallParams(**partial_data))
     print(f"Response: {response}")
     
     summary = get_current_tracker().get_summary()

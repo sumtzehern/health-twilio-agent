@@ -15,6 +15,11 @@ from patient_tracker import (
     get_current_tracker
 )
 
+class MockFunctionCallParams:
+    """Mimics Pipecat's FunctionCallParams for testing."""
+    def __init__(self, **kwargs):
+        self.arguments = kwargs
+
 # Anthropic tool schema (uses input_schema instead of parameters)
 anthropic_collect_patient_info_schema = {
     "name": collect_patient_info_schema["name"],
@@ -129,7 +134,7 @@ async def test_conversation_flow():
                 print(f"   Arguments: {json.dumps(tool_use_block.input)}")
 
                 # Execute the function with direct kwargs (input is already a dict)
-                result = await collect_patient_info(**tool_use_block.input)
+                result = await collect_patient_info(MockFunctionCallParams(**tool_use_block.input))
 
                 # Add assistant turn (tool use) and tool result to history
                 messages.append({"role": "assistant", "content": response.content})
@@ -205,7 +210,7 @@ async def test_individual_function_calls():
     for i, data in enumerate(test_data, 1):
         print(f"Test {i}: {data}")
         try:
-            result = await collect_patient_info(**data)
+            result = await collect_patient_info(MockFunctionCallParams(**data))
             print(f"✅ Result: {result}")
         except Exception as e:
             print(f"❌ Error: {e}")
