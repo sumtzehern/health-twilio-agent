@@ -82,7 +82,7 @@ class AddressValidator:
                     elif response.status == 401:
                         return {"valid": False, "error": "Invalid SmartyStreets credentials"}
                     elif response.status == 402:
-                        return {"valid": False, "error": "SmartyStreets quota exceeded"}
+                        return {"valid": False, "error": "SmartyStreets subscription required"}
                     else:
                         error_text = await response.text()
                         return {"valid": False, "error": f"API error {response.status}: {error_text}"}
@@ -257,9 +257,9 @@ async def validate_patient_address(address: str) -> Tuple[bool, str, Optional[st
             return False, "I'm having a small technical issue right now, but I'll record your address as you gave it to me.", address
         elif "timeout" in error.lower() or "network" in error.lower():
             return False, "My system's running a bit slow right now. Let me note down your address and we'll verify it later.", address
-        elif "quota" in error.lower():
-            logger.error("SmartyStreets API quota exceeded")
-            return False, "I'll record your address for now and verify it shortly.", address
+        elif "quota" in error.lower() or "subscription" in error.lower():
+            logger.error("SmartyStreets API subscription/quota issue")
+            return False, "I'm having a small technical issue right now, but I'll record your address as you gave it to me.", address
         else:
             return False, "Could you repeat that address for me? I want to make sure I get it exactly right.", None
 
@@ -272,11 +272,11 @@ async def test_address_validation():
     test_addresses = [
         # Valid addresses
         "1600 Pennsylvania Avenue NW, Washington, DC 20500",
-        "510 Sandwich Drive, Blacksburg, Virginia, 24060",
+        "510 Sunridge Drive, Blacksburg, Virginia, 24060",
         "875 Powell Street, San Francisco, CA 94108",
         
         # Conversational input
-        "I live at 510 Sandwich Drive in Blacksburg Virginia two four zero six zero",
+        "I live at 510 Sunridge Drive in Blacksburg Virginia two four zero six zero",
         "My address is 123 Main Street, Anytown, VA 12345",
         "You can find me at 789 Oak Avenue, Richmond Virginia",
         
