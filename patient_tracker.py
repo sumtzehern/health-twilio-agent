@@ -127,6 +127,18 @@ class PatientTracker:
             "is_complete": self.is_complete(),
             "next_field_needed": self.get_next_required_field()
         }
+
+    def to_context_summary(self) -> str:
+        """Compact state string to replace verbose conversation history mid-call.
+        Keeps context under ~500 tokens regardless of call length."""
+        collected = {k: v for k, v in self.patient_info.to_dict().items() if v}
+        missing = list(self.get_missing_required_fields())
+        return (
+            f"[SESSION STATE]\n"
+            f"Collected: {json.dumps(collected)}\n"
+            f"Still needed: {missing}\n"
+            f"Continue collecting missing fields conversationally."
+        )
     
     def reset(self):
         """Reset patient information for new call"""
