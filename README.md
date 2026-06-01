@@ -52,7 +52,7 @@ git
                           │               │ transcript text    │
                           │               ▼                    │
                           │  ┌──────────────────────────────┐ │
-                          │  │  OpenAILLMContext aggregator │ │
+                          │  │  LLMContext aggregator │ │
                           │  │  (message history + tools)   │ │
                           │  └────────────┬─────────────────┘ │
                           │               │ messages[]         │
