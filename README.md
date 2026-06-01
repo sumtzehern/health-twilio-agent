@@ -204,6 +204,8 @@ python address_validator.py quick   # single address smoke test
 ```
 
 ---
+## (Old) demo walk through
+https://www.loom.com/share/7dbee7e28641413c865649222ecb154d
 
 ## What the Email Confirmation Looks Like
 
